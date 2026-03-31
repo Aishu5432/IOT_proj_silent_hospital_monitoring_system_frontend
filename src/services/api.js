@@ -2,19 +2,16 @@ import {
   API_TIMEOUT_MS,
   DEFAULT_SENSOR_DATA,
   POLLING_INTERVAL_MS,
-  THINGSPEAK_FIELDS,
 } from "../utils/constants";
 import { mergeSensorData, toBoolean, toNumberOrNull } from "../utils/helpers";
 
-const THINGSPEAK_BASE_URL = "https://api.thingspeak.com/channels";
+const BACKEND_BASE_URL =
+  import.meta.env.VITE_BACKEND_BASE_URL || "http://localhost:5000";
 
 const getEnv = () => {
-  const config = {
-    channelId: import.meta.env.VITE_THINGSPEAK_CHANNEL_ID,
-    readKey: import.meta.env.VITE_THINGSPEAK_READ_KEY,
+  return {
+    backendBaseUrl: BACKEND_BASE_URL,
   };
-  console.log('[API] Environment config:', { channelId: config.channelId, readKey: config.readKey ? '***' : 'missing' });
-  return config;
 };
 
 const withTimeout = async (promise, timeoutMs, controller) => {
@@ -35,66 +32,65 @@ const withTimeout = async (promise, timeoutMs, controller) => {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const buildThingSpeakUrl = ({ results = 1 } = {}) => {
-  const { channelId, readKey } = getEnv();
-  if (!channelId || !readKey) {
-    console.error('[API] Missing ThingSpeak credentials');
-    throw new Error("ThingSpeak environment variables are missing");
-  }
-
-  const search = new URLSearchParams({
-    api_key: readKey,
-    results: String(results),
-  });
-
-  const url = `${THINGSPEAK_BASE_URL}/${channelId}/feeds.json?${search.toString()}`;
-  console.log('[API] Built ThingSpeak URL:', url.replace(readKey, '***'));
-  return url;
+const buildBackendUrl = (path, params = {}) => {
+  const { backendBaseUrl } = getEnv();
+  const search = new URLSearchParams(params);
+  const suffix = search.toString() ? `?${search.toString()}` : "";
+  return `${backendBaseUrl}${path}${suffix}`;
 };
 
-export const normalizeThingSpeakFeed = (feed) => {
-  console.log('[API] Normalizing feed:', feed);
-  if (!feed) {
-    console.warn('[API] No feed data to normalize');
+export const normalizeBackendData = (payload) => {
+  if (!payload) {
     return DEFAULT_SENSOR_DATA;
   }
 
-  const normalized = mergeSensorData({
-    temperature: toNumberOrNull(feed[THINGSPEAK_FIELDS.temperature]),
-    humidity: toNumberOrNull(feed[THINGSPEAK_FIELDS.humidity]),
-    distance: toNumberOrNull(feed[THINGSPEAK_FIELDS.distance]),
-    soundLevel: toNumberOrNull(feed[THINGSPEAK_FIELDS.soundLevel]),
-    motion: toBoolean(feed[THINGSPEAK_FIELDS.motion]),
-    personCount: toNumberOrNull(feed[THINGSPEAK_FIELDS.personCount]) ?? 0,
+  return mergeSensorData({
+    temperature: toNumberOrNull(payload.temperature),
+    humidity: toNumberOrNull(payload.humidity),
+    distance: toNumberOrNull(payload.distance),
+    soundLevel: toNumberOrNull(payload.sound_level),
+    motion: toBoolean(payload.motion),
+    personCount:
+      toNumberOrNull(payload.current_count ?? payload.estimated_occupancy) ?? 0,
+    currentCount:
+      toNumberOrNull(payload.current_count ?? payload.estimated_occupancy) ?? 0,
+    estimatedOccupancy: toNumberOrNull(payload.estimated_occupancy) ?? 0,
+    lastEvent: payload.last_event || null,
     cameraStatus: "unknown",
-    timestamp: feed.created_at || new Date().toISOString(),
-    source: "thingspeak",
+    timestamp: payload.timestamp || new Date().toISOString(),
+    source: payload.source || "backend",
   });
-  console.log('[API] Normalized data:', normalized);
-  return normalized;
 };
 
-const requestThingSpeak = async ({ results = 1, signal } = {}) => {
-  console.log('[API] Requesting ThingSpeak data, results:', results);
+const requestBackend = async ({
+  path,
+  params = {},
+  signal,
+  method = "GET",
+  body,
+} = {}) => {
   const controller = new AbortController();
   const activeSignal = signal || controller.signal;
 
-  const url = buildThingSpeakUrl({ results });
+  const url = buildBackendUrl(path, params);
   const response = await withTimeout(
-    fetch(url, { signal: activeSignal }),
+    fetch(url, {
+      method,
+      signal: activeSignal,
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    }),
     API_TIMEOUT_MS,
     controller,
   );
 
-  console.log('[API] Response status:', response.status, response.statusText);
   if (!response.ok) {
-    console.error('[API] Request failed:', response.status, response.statusText);
-    throw new Error(`ThingSpeak request failed: ${response.status}`);
+    throw new Error(`Backend request failed: ${response.status}`);
   }
 
-  const data = await response.json();
-  console.log('[API] Response data:', data);
-  return data;
+  return response.json();
 };
 
 const withRetries = async (runner, { retries = 2, delayMs = 1200 } = {}) => {
@@ -113,22 +109,17 @@ const withRetries = async (runner, { retries = 2, delayMs = 1200 } = {}) => {
       }
     }
   }
-  console.error('[API] All retry attempts exhausted');
+  console.error("[API] All retry attempts exhausted");
   throw lastError;
 };
 
 export const fetchLatestSensorData = async ({ signal, retries = 2 } = {}) => {
-  console.log('[API] Fetching latest sensor data...');
   const data = await withRetries(
-    () => requestThingSpeak({ results: 1, signal }),
+    () => requestBackend({ path: "/api/latest", signal }),
     { retries },
   );
 
-  const latestFeed = data?.feeds?.[data.feeds.length - 1];
-  console.log('[API] Latest feed:', latestFeed);
-  const normalized = normalizeThingSpeakFeed(latestFeed);
-  console.log('[API] Fetch complete, returning:', normalized);
-  return normalized;
+  return normalizeBackendData(data?.data);
 };
 
 export const fetchHistoricalSensorData = async ({
@@ -136,16 +127,83 @@ export const fetchHistoricalSensorData = async ({
   signal,
   retries = 2,
 } = {}) => {
-  console.log('[API] Fetching historical sensor data, results:', results);
-  const data = await withRetries(() => requestThingSpeak({ results, signal }), {
-    retries,
-  });
+  const data = await withRetries(
+    () =>
+      requestBackend({
+        path: "/api/history",
+        params: { limit: results },
+        signal,
+      }),
+    { retries },
+  );
 
-  const feeds = Array.isArray(data?.feeds) ? data.feeds : [];
-  console.log('[API] Historical feeds count:', feeds.length);
-  const normalized = feeds.map(normalizeThingSpeakFeed).filter((item) => item.timestamp);
-  console.log('[API] Historical data normalized, count:', normalized.length);
-  return normalized;
+  const rows = Array.isArray(data?.data) ? [...data.data].reverse() : [];
+  return rows.map(normalizeBackendData).filter((item) => item.timestamp);
+};
+
+export const fetchHealthStatus = async ({ signal, retries = 1 } = {}) => {
+  const data = await withRetries(
+    () => requestBackend({ path: "/api/health", signal }),
+    { retries },
+  );
+
+  return {
+    status: data?.status || "unknown",
+    timestamp: data?.timestamp || null,
+  };
+};
+
+export const fetchOccupancyStatus = async ({ signal, retries = 2 } = {}) => {
+  const data = await withRetries(
+    () => requestBackend({ path: "/api/occupancy", signal }),
+    { retries },
+  );
+
+  const payload = data?.data || {};
+  return {
+    currentCount: toNumberOrNull(payload.current_count) ?? 0,
+    lastState:
+      typeof payload.last_state === "string"
+        ? payload.last_state.toLowerCase()
+        : "clear",
+    lastTriggerTime: payload.last_trigger_time || null,
+    timestamp: payload.timestamp || null,
+  };
+};
+
+export const fetchEntryLogs = async ({
+  limit = 20,
+  signal,
+  retries = 2,
+} = {}) => {
+  const data = await withRetries(
+    () =>
+      requestBackend({ path: "/api/entry-logs", params: { limit }, signal }),
+    { retries },
+  );
+
+  return Array.isArray(data?.data) ? data.data : [];
+};
+
+export const resetOccupancy = async ({ signal, retries = 1 } = {}) => {
+  const data = await withRetries(
+    () => requestBackend({ path: "/api/reset", signal, method: "POST" }),
+    { retries },
+  );
+
+  return {
+    status: data?.status || "error",
+    message: data?.message || "Reset request completed.",
+    data: data?.data || null,
+  };
+};
+
+export const fetchBackendConfig = async ({ signal, retries = 2 } = {}) => {
+  const data = await withRetries(
+    () => requestBackend({ path: "/api/config", signal }),
+    { retries },
+  );
+  return data?.data || {};
 };
 
 export const createThingSpeakPoller = ({
@@ -161,33 +219,27 @@ export const createThingSpeakPoller = ({
 
   const tick = async () => {
     if (disposed) return;
-    console.log('[API Poller] Tick started');
     onLoading?.(true);
 
     try {
       const latestData = await fetchLatestSensorData({ retries });
-      console.log('[API Poller] Data received:', latestData);
       onData?.(latestData);
       onError?.(null);
     } catch (error) {
-      console.error('[API Poller] Error:', error);
       onError?.(error);
     } finally {
       onLoading?.(false);
-      console.log('[API Poller] Tick completed');
     }
   };
 
   const start = () => {
     if (disposed || started) return;
-    console.log('[API Poller] Starting poller, interval:', intervalMs, 'ms');
     started = true;
     tick();
     timerId = setInterval(tick, intervalMs);
   };
 
   const stop = () => {
-    console.log('[API Poller] Stopping poller');
     disposed = true;
     started = false;
     if (timerId) clearInterval(timerId);

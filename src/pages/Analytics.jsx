@@ -162,7 +162,7 @@ const Analytics = () => {
             <p className="text-gray-600 text-sm">{stat.label}</p>
             <p className="text-3xl font-bold mt-2">{stat.value}</p>
             <p className={`text-sm mt-2 ${stat.color}`}>
-              Live from ThingSpeak data
+              Live from backend API data
             </p>
           </motion.div>
         ))}

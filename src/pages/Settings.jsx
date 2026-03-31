@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { FaSave, FaBell, FaWifi, FaVideo, FaLock } from "react-icons/fa";
 import toast from "react-hot-toast";
+import { fetchBackendConfig, resetOccupancy } from "../services/api";
 import {
   getSettings,
   saveSettings,
@@ -10,6 +11,8 @@ import {
 
 const Settings = () => {
   const [settings, setSettings] = useState(getSettings());
+  const [backendConfig, setBackendConfig] = useState(null);
+  const [resetBusy, setResetBusy] = useState(false);
 
   useEffect(() => {
     const unsubscribe = subscribeSettings((nextSettings) => {
@@ -19,9 +22,39 @@ const Settings = () => {
     return () => unsubscribe();
   }, []);
 
+  useEffect(() => {
+    let active = true;
+
+    const loadBackendConfig = async () => {
+      try {
+        const config = await fetchBackendConfig();
+        if (active) setBackendConfig(config);
+      } catch {
+        if (active) setBackendConfig(null);
+      }
+    };
+
+    loadBackendConfig();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const handleSave = () => {
     saveSettings(settings);
     toast.success("Settings saved and applied successfully");
+  };
+
+  const handleResetOccupancy = async () => {
+    try {
+      setResetBusy(true);
+      const result = await resetOccupancy();
+      toast.success(result.message || "Occupancy reset completed");
+    } catch {
+      toast.error("Failed to reset occupancy");
+    } finally {
+      setResetBusy(false);
+    }
   };
 
   return (
@@ -202,6 +235,51 @@ const Settings = () => {
                 <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600" />
               </label>
             </div>
+          </div>
+        </motion.div>
+
+        <motion.div
+          whileHover={{ scale: 1.01 }}
+          className="bg-white p-6 rounded-xl shadow-lg lg:col-span-2"
+        >
+          <h2 className="text-xl font-semibold mb-4 flex items-center">
+            <FaLock className="mr-2 text-gray-700" /> Backend Runtime Config
+          </h2>
+
+          {backendConfig ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+              <div className="p-3 bg-gray-50 rounded-lg">
+                Fetch Interval: {backendConfig.fetch_interval_seconds}s
+              </div>
+              <div className="p-3 bg-gray-50 rounded-lg">
+                Entry Threshold: {backendConfig.entry_distance_threshold} cm
+              </div>
+              <div className="p-3 bg-gray-50 rounded-lg">
+                Clear Threshold: {backendConfig.entry_clear_distance_threshold}{" "}
+                cm
+              </div>
+              <div className="p-3 bg-gray-50 rounded-lg">
+                Cooldown: {backendConfig.entry_cooldown_seconds}s
+              </div>
+              <div className="p-3 bg-gray-50 rounded-lg">
+                Crossing Window: {backendConfig.crossing_max_seconds}s
+              </div>
+              <div className="p-3 bg-gray-50 rounded-lg">
+                Crowd Alert Threshold: {backendConfig.crowd_alert_threshold}
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500">Backend config unavailable.</p>
+          )}
+
+          <div className="mt-5">
+            <button
+              onClick={handleResetOccupancy}
+              disabled={resetBusy}
+              className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-60"
+            >
+              {resetBusy ? "Resetting..." : "Reset Estimated Occupancy"}
+            </button>
           </div>
         </motion.div>
       </div>

@@ -11,7 +11,11 @@ import {
 } from "react-icons/fa";
 import { BsDropletHalf } from "react-icons/bs";
 import { MdGraphicEq } from "react-icons/md";
-import { fetchHistoricalSensorData } from "../services/api";
+import {
+  fetchHealthStatus,
+  fetchHistoricalSensorData,
+  fetchOccupancyStatus,
+} from "../services/api";
 import { useAlerts, useSensorData } from "../context/AppContext";
 import { getThresholdSettings } from "../services/settingsService";
 import { formatDateTime, formatTime, getDataFreshness } from "../utils/helpers";
@@ -26,6 +30,16 @@ const Dashboard = () => {
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [timeRange, setTimeRange] = useState("24h");
+  const [backendHealth, setBackendHealth] = useState({
+    status: "unknown",
+    timestamp: null,
+  });
+  const [occupancyInfo, setOccupancyInfo] = useState({
+    currentCount: 0,
+    lastState: "clear",
+    lastTriggerTime: null,
+    timestamp: null,
+  });
 
   useEffect(() => {
     let active = true;
@@ -51,6 +65,32 @@ const Dashboard = () => {
       active = false;
     };
   }, [timeRange]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadStatus = async () => {
+      try {
+        const [health, occupancy] = await Promise.all([
+          fetchHealthStatus(),
+          fetchOccupancyStatus(),
+        ]);
+        if (!active) return;
+        setBackendHealth(health);
+        setOccupancyInfo(occupancy);
+      } catch {
+        if (!active) return;
+        setBackendHealth({ status: "error", timestamp: null });
+      }
+    };
+
+    loadStatus();
+    const timerId = setInterval(loadStatus, 15_000);
+    return () => {
+      active = false;
+      clearInterval(timerId);
+    };
+  }, []);
 
   const thresholds = getThresholdSettings();
   const freshness = getDataFreshness(sensorData.timestamp);
@@ -91,9 +131,20 @@ const Dashboard = () => {
         unit: "dB",
       },
       {
+        title: "Distance",
+        value: sensorData.distance ?? 0,
+        displayValue: `${sensorData.distance ?? "--"} cm`,
+        icon: <FaChartLine className="text-3xl" />,
+        color: "from-indigo-500 to-blue-500",
+        bgColor: "bg-indigo-50",
+        textColor: "text-indigo-600",
+        threshold: null,
+        unit: "cm",
+      },
+      {
         title: "People Count",
-        value: sensorData.personCount ?? 0,
-        displayValue: `${sensorData.personCount ?? "--"}`,
+        value: sensorData.currentCount ?? sensorData.personCount ?? 0,
+        displayValue: `${sensorData.currentCount ?? sensorData.personCount ?? "--"}`,
         icon: <FaUsers className="text-3xl" />,
         color: "from-green-500 to-emerald-500",
         bgColor: "bg-green-50",
@@ -163,7 +214,7 @@ const Dashboard = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
         {statsCards.map((stat) => (
           <SensorCard
             key={stat.title}
@@ -256,6 +307,12 @@ const Dashboard = () => {
               </span>
             </div>
             <div className="flex justify-between items-center">
+              <span className="text-gray-600">Backend Health</span>
+              <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm capitalize">
+                {backendHealth.status}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
               <span className="text-gray-600">Data Freshness</span>
               <span
                 className={`px-3 py-1 rounded-full text-sm ${freshness.colorClass} bg-gray-100`}
@@ -264,9 +321,27 @@ const Dashboard = () => {
               </span>
             </div>
             <div className="flex justify-between items-center">
+              <span className="text-gray-600">Last Event</span>
+              <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm">
+                {sensorData.lastEvent || "None"}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600">Entry State</span>
+              <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm capitalize">
+                {occupancyInfo.lastState}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
               <span className="text-gray-600">Camera Status</span>
               <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm capitalize">
                 {sensorData.cameraStatus}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600">Last Trigger</span>
+              <span className="text-sm text-gray-700 text-right max-w-[55%] truncate">
+                {formatDateTime(occupancyInfo.lastTriggerTime)}
               </span>
             </div>
             <div className="flex justify-between items-center">

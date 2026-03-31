@@ -1,12 +1,35 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useAlerts } from "../context/AppContext";
 import { FaFilter, FaTrash, FaCheckCircle } from "react-icons/fa";
 import AlertCard from "../components/Dashboard/AlertCard";
+import { fetchEntryLogs } from "../services/api";
+import { formatDateTime } from "../utils/helpers";
 
 const Alerts = () => {
   const { alerts, clearAlerts } = useAlerts();
   const [filter, setFilter] = useState("all");
+  const [entryLogs, setEntryLogs] = useState([]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadEntryLogs = async () => {
+      try {
+        const logs = await fetchEntryLogs({ limit: 20 });
+        if (active) setEntryLogs(logs);
+      } catch {
+        if (active) setEntryLogs([]);
+      }
+    };
+
+    loadEntryLogs();
+    const timerId = setInterval(loadEntryLogs, 15_000);
+    return () => {
+      active = false;
+      clearInterval(timerId);
+    };
+  }, []);
 
   const filteredAlerts = alerts.filter((alert) => {
     if (filter === "all") return true;
@@ -71,6 +94,34 @@ const Alerts = () => {
             </h3>
             <p className="text-gray-600">All systems are operating normally</p>
           </motion.div>
+        )}
+      </div>
+
+      <div className="mt-8 bg-white p-6 rounded-xl shadow-lg">
+        <h2 className="text-xl font-semibold text-gray-800 mb-4">
+          Entry Event Logs
+        </h2>
+        {entryLogs.length === 0 ? (
+          <p className="text-sm text-gray-500">No entry events recorded yet.</p>
+        ) : (
+          <div className="space-y-2 max-h-72 overflow-y-auto">
+            {entryLogs.map((log) => (
+              <div
+                key={log.id}
+                className="flex items-center justify-between border border-gray-200 rounded-lg px-3 py-2"
+              >
+                <span className="text-sm font-medium text-gray-700">
+                  {log.event_type}
+                </span>
+                <span className="text-sm text-gray-500">
+                  Distance: {log.distance ?? "N/A"}
+                </span>
+                <span className="text-sm text-gray-500">
+                  {formatDateTime(log.timestamp)}
+                </span>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </motion.div>

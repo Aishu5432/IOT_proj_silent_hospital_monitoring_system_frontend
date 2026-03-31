@@ -4,8 +4,8 @@ Production-ready React + Vite frontend for a Smart Hospital room monitoring syst
 
 ## Features
 
-- ThingSpeak API integration with normalized sensor model
-- MQTT-ready stream service with automatic polling fallback
+- Backend API integration with normalized sensor model
+- Polling stream service for stable local and Raspberry Pi setups
 - Global sensor and alert state via AppContext hooks
 - Smart alert engine with severity, deduplication, and expiration
 - Functional settings with localStorage persistence
@@ -26,7 +26,8 @@ All streams are normalized to the following structure:
   "motion": false,
   "personCount": 1,
   "cameraStatus": "unknown",
-  "timestamp": "2026-03-30T12:00:00.000Z"
+  "timestamp": "2026-03-30T12:00:00.000Z",
+  "source": "backend"
 }
 ```
 
@@ -35,10 +36,7 @@ All streams are normalized to the following structure:
 Create a local `.env` file (or copy from `.env.example`) and set values:
 
 ```bash
-VITE_THINGSPEAK_CHANNEL_ID=
-VITE_THINGSPEAK_READ_KEY=
-VITE_MQTT_BROKER_URL=
-VITE_MQTT_TOPIC=hospital/sensors
+VITE_BACKEND_BASE_URL=http://localhost:5000
 ```
 
 ## Development
@@ -57,8 +55,8 @@ npm run preview
 
 ## Architecture
 
-- `src/services/api.js`: ThingSpeak API, normalization, retries, polling
-- `src/services/mqttService.js`: MQTT stream + polling fallback orchestration
+- `src/services/api.js`: backend API client, normalization, retries, polling
+- `src/services/mqttService.js`: polling stream orchestration via backend API
 - `src/services/settingsService.js`: settings persistence and subscriptions
 - `src/context/AppContext.jsx`: global sensor/alert/loading/error state and hooks
 - `src/utils/alertEngine.js`: threshold alert logic, dedupe, expiration
@@ -67,6 +65,5 @@ npm run preview
 
 ## Future Integration Notes
 
-- Raspberry Pi OpenCV person detection can feed `personCount`
+- Raspberry Pi services can push to ThingSpeak and backend remains frontend source
 - Camera health endpoint can update `cameraStatus`
-- MQTT broker can become the primary stream with zero page-level changes
