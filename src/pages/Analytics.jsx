@@ -1,54 +1,130 @@
-import React, { useState } from 'react'
-import { motion } from 'framer-motion'
-import { 
-  BarChart, Bar, LineChart, Line, 
-  PieChart, Pie, Cell, 
-  XAxis, YAxis, CartesianGrid, 
-  Tooltip, Legend, ResponsiveContainer,
-  AreaChart, Area
-} from 'recharts'
-import { 
-  FaCalendar, 
-  FaDownload, 
+import React, { useEffect, useMemo, useState } from "react";
+import { motion } from "framer-motion";
+import {
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+} from "recharts";
+import {
+  FaDownload,
   FaChartPie,
   FaChartBar,
-  FaChartLine 
-} from 'react-icons/fa'
+  FaChartLine,
+} from "react-icons/fa";
+import { fetchHistoricalSensorData } from "../services/api";
+import { useAlerts } from "../context/AppContext";
+import { formatTime, groupByHour } from "../utils/helpers";
+import ChartComponent from "../components/Dashboard/ChartComponent";
+import Loader from "../components/Common/Loader";
+
+const RANGE_TO_RESULTS = {
+  day: 24,
+  week: 24 * 7,
+  month: 24 * 30,
+  year: 24 * 30,
+};
+
+const COLORS = ["#8b5cf6", "#ef4444", "#3b82f6", "#10b981"];
 
 const Analytics = () => {
-  const [chartType, setChartType] = useState('line')
-  const [dateRange, setDateRange] = useState('week')
+  const { alerts } = useAlerts();
+  const [chartType, setChartType] = useState("line");
+  const [dateRange, setDateRange] = useState("week");
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // Mock analytics data
-  const weeklyData = [
-    { day: 'Mon', noise: 42, temp: 23, humidity: 55, alerts: 3 },
-    { day: 'Tue', noise: 38, temp: 24, humidity: 58, alerts: 1 },
-    { day: 'Wed', noise: 45, temp: 23, humidity: 52, alerts: 4 },
-    { day: 'Thu', noise: 35, temp: 22, humidity: 60, alerts: 2 },
-    { day: 'Fri', noise: 48, temp: 24, humidity: 54, alerts: 5 },
-    { day: 'Sat', noise: 32, temp: 23, humidity: 62, alerts: 1 },
-    { day: 'Sun', noise: 30, temp: 22, humidity: 63, alerts: 0 }
-  ]
+  useEffect(() => {
+    let active = true;
+    const loadHistory = async () => {
+      setLoading(true);
+      try {
+        const results = RANGE_TO_RESULTS[dateRange] || RANGE_TO_RESULTS.week;
+        const data = await fetchHistoricalSensorData({ results });
+        if (active) setHistory(data);
+      } catch {
+        if (active) setHistory([]);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
 
-  const alertDistribution = [
-    { name: 'Noise', value: 45, color: '#8b5cf6' },
-    { name: 'Temperature', value: 30, color: '#ef4444' },
-    { name: 'Humidity', value: 15, color: '#3b82f6' },
-    { name: 'Crowd', value: 10, color: '#10b981' }
-  ]
+    loadHistory();
+    return () => {
+      active = false;
+    };
+  }, [dateRange]);
 
-  const hourlyPattern = Array.from({ length: 24 }, (_, i) => ({
-    hour: `${i}:00`,
-    noise: Math.floor(Math.random() * 30) + 30,
-    occupancy: Math.floor(Math.random() * 3)
-  }))
+  const chartRows = useMemo(
+    () =>
+      history.map((row) => ({
+        label: formatTime(row.timestamp),
+        temperature: row.temperature ?? 0,
+        humidity: row.humidity ?? 0,
+        soundLevel: row.soundLevel ?? 0,
+        personCount: row.personCount ?? 0,
+      })),
+    [history],
+  );
 
-  const stats = [
-    { label: 'Total Alerts', value: '156', change: '+12%', color: 'text-red-600' },
-    { label: 'Avg Noise', value: '38 dB', change: '-5%', color: 'text-green-600' },
-    { label: 'Avg Temp', value: '23°C', change: '+1%', color: 'text-orange-600' },
-    { label: 'Uptime', value: '99.9%', change: '+0.1%', color: 'text-green-600' }
-  ]
+  const hourlyPattern = useMemo(() => groupByHour(history), [history]);
+
+  const alertDistribution = useMemo(() => {
+    const summary = alerts.reduce(
+      (acc, alert) => {
+        if (alert.metric === "soundLevel") acc.noise += 1;
+        else if (alert.metric === "temperature") acc.temperature += 1;
+        else if (alert.metric === "humidity") acc.humidity += 1;
+        else if (alert.metric === "personCount") acc.crowd += 1;
+        return acc;
+      },
+      { noise: 0, temperature: 0, humidity: 0, crowd: 0 },
+    );
+
+    return [
+      { name: "Noise", value: summary.noise },
+      { name: "Temperature", value: summary.temperature },
+      { name: "Humidity", value: summary.humidity },
+      { name: "Crowd", value: summary.crowd },
+    ];
+  }, [alerts]);
+
+  const stats = useMemo(() => {
+    const totalAlerts = alerts.length;
+    const avgNoise = chartRows.length
+      ? chartRows.reduce((sum, row) => sum + row.soundLevel, 0) /
+        chartRows.length
+      : 0;
+    const avgTemp = chartRows.length
+      ? chartRows.reduce((sum, row) => sum + row.temperature, 0) /
+        chartRows.length
+      : 0;
+
+    return [
+      {
+        label: "Total Alerts",
+        value: totalAlerts.toString(),
+        color: "text-red-600",
+      },
+      {
+        label: "Avg Noise",
+        value: `${avgNoise.toFixed(1)} dB`,
+        color: "text-purple-600",
+      },
+      {
+        label: "Avg Temp",
+        value: `${avgTemp.toFixed(1)}°C`,
+        color: "text-orange-600",
+      },
+      {
+        label: "Data Samples",
+        value: history.length.toString(),
+        color: "text-green-600",
+      },
+    ];
+  }, [alerts.length, chartRows, history.length]);
 
   return (
     <motion.div
@@ -57,12 +133,12 @@ const Analytics = () => {
       exit={{ opacity: 0 }}
       className="space-y-6"
     >
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center flex-wrap gap-3">
         <h1 className="text-3xl font-bold text-gray-800">Analytics</h1>
         <div className="flex space-x-3">
-          <select 
+          <select
             value={dateRange}
-            onChange={(e) => setDateRange(e.target.value)}
+            onChange={(event) => setDateRange(event.target.value)}
             className="px-4 py-2 bg-white rounded-lg border border-gray-300"
           >
             <option value="day">Last 24 Hours</option>
@@ -76,141 +152,121 @@ const Analytics = () => {
         </div>
       </div>
 
-      {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat, index) => (
+        {stats.map((stat) => (
           <motion.div
-            key={index}
-            whileHover={{ scale: 1.05 }}
+            key={stat.label}
+            whileHover={{ scale: 1.03 }}
             className="bg-white p-6 rounded-xl shadow-lg"
           >
             <p className="text-gray-600 text-sm">{stat.label}</p>
             <p className="text-3xl font-bold mt-2">{stat.value}</p>
-            <p className={`text-sm mt-2 ${stat.color}`}>{stat.change} from last period</p>
+            <p className={`text-sm mt-2 ${stat.color}`}>
+              Live from ThingSpeak data
+            </p>
           </motion.div>
         ))}
       </div>
 
-      {/* Chart Type Selector */}
       <div className="flex space-x-2 bg-white p-2 rounded-lg inline-block">
         <button
-          onClick={() => setChartType('line')}
-          className={`p-2 rounded ${chartType === 'line' ? 'bg-blue-600 text-white' : 'hover:bg-gray-100'}`}
+          onClick={() => setChartType("line")}
+          className={`p-2 rounded ${chartType === "line" ? "bg-blue-600 text-white" : "hover:bg-gray-100"}`}
         >
           <FaChartLine />
         </button>
         <button
-          onClick={() => setChartType('bar')}
-          className={`p-2 rounded ${chartType === 'bar' ? 'bg-blue-600 text-white' : 'hover:bg-gray-100'}`}
+          onClick={() => setChartType("bar")}
+          className={`p-2 rounded ${chartType === "bar" ? "bg-blue-600 text-white" : "hover:bg-gray-100"}`}
         >
           <FaChartBar />
         </button>
         <button
-          onClick={() => setChartType('area')}
-          className={`p-2 rounded ${chartType === 'area' ? 'bg-blue-600 text-white' : 'hover:bg-gray-100'}`}
+          onClick={() => setChartType("area")}
+          className={`p-2 rounded ${chartType === "area" ? "bg-blue-600 text-white" : "hover:bg-gray-100"}`}
         >
           <FaChartPie />
         </button>
       </div>
 
-      {/* Main Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Environmental Trends */}
         <motion.div
-          whileHover={{ scale: 1.02 }}
+          whileHover={{ scale: 1.01 }}
           className="bg-white p-6 rounded-xl shadow-lg"
         >
           <h2 className="text-xl font-semibold mb-4">Environmental Trends</h2>
-          <ResponsiveContainer width="100%" height={400}>
-            {chartType === 'line' && (
-              <LineChart data={weeklyData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="day" />
-                <YAxis yAxisId="left" />
-                <YAxis yAxisId="right" orientation="right" />
-                <Tooltip />
-                <Legend />
-                <Line yAxisId="left" type="monotone" dataKey="noise" stroke="#8b5cf6" name="Noise (dB)" />
-                <Line yAxisId="right" type="monotone" dataKey="temp" stroke="#ef4444" name="Temperature (°C)" />
-                <Line yAxisId="right" type="monotone" dataKey="humidity" stroke="#3b82f6" name="Humidity (%)" />
-              </LineChart>
-            )}
-            {chartType === 'bar' && (
-              <BarChart data={weeklyData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="day" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="noise" fill="#8b5cf6" name="Noise (dB)" />
-                <Bar dataKey="temp" fill="#ef4444" name="Temperature (°C)" />
-                <Bar dataKey="humidity" fill="#3b82f6" name="Humidity (%)" />
-              </BarChart>
-            )}
-            {chartType === 'area' && (
-              <AreaChart data={weeklyData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="day" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Area type="monotone" dataKey="noise" stackId="1" stroke="#8b5cf6" fill="#8b5cf6" />
-                <Area type="monotone" dataKey="temp" stackId="2" stroke="#ef4444" fill="#ef4444" />
-                <Area type="monotone" dataKey="humidity" stackId="3" stroke="#3b82f6" fill="#3b82f6" />
-              </AreaChart>
-            )}
-          </ResponsiveContainer>
+          {loading ? (
+            <Loader compact label="Loading environmental trends..." />
+          ) : (
+            <ChartComponent
+              type={chartType}
+              data={chartRows}
+              xKey="label"
+              dataKey="temperature"
+              label="Temperature (°C)"
+              color="#ef4444"
+              height={400}
+            />
+          )}
         </motion.div>
 
-        {/* Alert Distribution */}
         <motion.div
-          whileHover={{ scale: 1.02 }}
+          whileHover={{ scale: 1.01 }}
           className="bg-white p-6 rounded-xl shadow-lg"
         >
           <h2 className="text-xl font-semibold mb-4">Alert Distribution</h2>
-          <ResponsiveContainer width="100%" height={400}>
-            <PieChart>
-              <Pie
-                data={alertDistribution}
-                cx="50%"
-                cy="50%"
-                labelLine={false}
-                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                outerRadius={150}
-                fill="#8884d8"
-                dataKey="value"
-              >
-                {alertDistribution.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
+          {loading ? (
+            <Loader compact label="Loading alert summary..." />
+          ) : (
+            <ResponsiveContainer width="100%" height={400}>
+              <PieChart>
+                <Pie
+                  data={alertDistribution}
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={140}
+                  label={({ name, percent }) =>
+                    `${name} ${(percent * 100).toFixed(0)}%`
+                  }
+                  dataKey="value"
+                >
+                  {alertDistribution.map((entry, index) => (
+                    <Cell
+                      key={entry.name}
+                      fill={COLORS[index % COLORS.length]}
+                    />
+                  ))}
+                </Pie>
+                <Tooltip />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
         </motion.div>
 
-        {/* Hourly Pattern */}
         <motion.div
-          whileHover={{ scale: 1.02 }}
+          whileHover={{ scale: 1.01 }}
           className="bg-white p-6 rounded-xl shadow-lg lg:col-span-2"
         >
-          <h2 className="text-xl font-semibold mb-4">Hourly Activity Pattern</h2>
-          <ResponsiveContainer width="100%" height={300}>
-            <AreaChart data={hourlyPattern}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="hour" />
-              <YAxis yAxisId="left" />
-              <YAxis yAxisId="right" orientation="right" />
-              <Tooltip />
-              <Legend />
-              <Area yAxisId="left" type="monotone" dataKey="noise" stroke="#8b5cf6" fill="#c4b5fd" name="Noise Level" />
-              <Area yAxisId="right" type="monotone" dataKey="occupancy" stroke="#10b981" fill="#6ee7b7" name="Occupancy" />
-            </AreaChart>
-          </ResponsiveContainer>
+          <h2 className="text-xl font-semibold mb-4">
+            Hourly Activity Pattern
+          </h2>
+          {loading ? (
+            <Loader compact label="Loading hourly pattern..." />
+          ) : (
+            <ChartComponent
+              type="area"
+              data={hourlyPattern}
+              xKey="hour"
+              dataKey="soundLevel"
+              label="Noise Level (dB)"
+              color="#8b5cf6"
+            />
+          )}
         </motion.div>
       </div>
     </motion.div>
-  )
-}
+  );
+};
 
-export default Analytics
+export default Analytics;

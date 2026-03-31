@@ -1,17 +1,17 @@
-import React, { useState } from 'react'
-import { motion } from 'framer-motion'
-import { useApp } from '../context/AppContext'
-import { FaFilter, FaTrash, FaCheckCircle, FaExclamationTriangle } from 'react-icons/fa'
-import AlertCard from '../components/Dashboard/AlertCard'
+import React, { useState } from "react";
+import { motion } from "framer-motion";
+import { useAlerts } from "../context/AppContext";
+import { FaFilter, FaTrash, FaCheckCircle } from "react-icons/fa";
+import AlertCard from "../components/Dashboard/AlertCard";
 
 const Alerts = () => {
-  const { alerts, clearAlerts } = useApp()
-  const [filter, setFilter] = useState('all')
+  const { alerts, clearAlerts } = useAlerts();
+  const [filter, setFilter] = useState("all");
 
-  const filteredAlerts = alerts.filter(alert => {
-    if (filter === 'all') return true
-    return alert.type === filter
-  })
+  const filteredAlerts = alerts.filter((alert) => {
+    if (filter === "all") return true;
+    return alert.type === filter;
+  });
 
   return (
     <motion.div
@@ -37,14 +37,14 @@ const Alerts = () => {
         <div className="flex items-center space-x-4">
           <FaFilter className="text-gray-500" />
           <span className="text-gray-700">Filter by:</span>
-          {['all', 'warning', 'info', 'error'].map((type) => (
+          {["all", "info", "warning", "critical"].map((type) => (
             <button
               key={type}
               onClick={() => setFilter(type)}
               className={`px-4 py-2 rounded-lg transition ${
                 filter === type
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
               }`}
             >
               {type.charAt(0).toUpperCase() + type.slice(1)}
@@ -66,13 +66,15 @@ const Alerts = () => {
             className="bg-white p-12 rounded-xl shadow-lg text-center"
           >
             <FaCheckCircle className="text-6xl text-green-500 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-gray-800 mb-2">No Alerts Found</h3>
+            <h3 className="text-xl font-semibold text-gray-800 mb-2">
+              No Alerts Found
+            </h3>
             <p className="text-gray-600">All systems are operating normally</p>
           </motion.div>
         )}
       </div>
     </motion.div>
-  )
-}
+  );
+};
 
-export default Alerts
+export default Alerts;

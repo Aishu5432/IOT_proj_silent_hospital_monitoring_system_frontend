@@ -1,40 +1,39 @@
-import React, { useState, useEffect } from 'react'
-import { motion } from 'framer-motion'
-import { useApp } from '../context/AppContext'
-import { 
-  FaVideo, 
-  FaMicrophone, 
+import React, { useState, useEffect } from "react";
+import { motion } from "framer-motion";
+import { useSensorData } from "../context/AppContext";
+import {
+  FaVideo,
+  FaMicrophone,
   FaStop,
   FaPlay,
   FaCamera,
   FaSync,
   FaExclamationTriangle,
-  FaCheckCircle
-} from 'react-icons/fa'
-import { BsBroadcast } from 'react-icons/bs'
+  FaCheckCircle,
+} from "react-icons/fa";
+import { BsBroadcast } from "react-icons/bs";
 
 const LiveMonitoring = () => {
-  const { sensorData } = useApp()
-  const [isStreaming, setIsStreaming] = useState(false)
-  const [cameraFeed, setCameraFeed] = useState(null)
-  const [audioLevel, setAudioLevel] = useState(0)
-  const [detectedObjects, setDetectedObjects] = useState([])
+  const { sensorData, loading } = useSensorData();
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [detectedObjects, setDetectedObjects] = useState([]);
 
   // Simulate camera feed
   useEffect(() => {
     if (isStreaming) {
       const interval = setInterval(() => {
-        setAudioLevel(Math.random() * 100)
+        setAudioLevel(Math.random() * 100);
         setDetectedObjects([
-          { type: 'person', confidence: Math.random() * 0.3 + 0.7 },
-          { type: 'bed', confidence: Math.random() * 0.2 + 0.8 },
-          { type: 'monitor', confidence: Math.random() * 0.3 + 0.6 }
-        ])
-      }, 1000)
+          { type: "person", confidence: Math.random() * 0.3 + 0.7 },
+          { type: "bed", confidence: Math.random() * 0.2 + 0.8 },
+          { type: "monitor", confidence: Math.random() * 0.3 + 0.6 },
+        ]);
+      }, 1000);
 
-      return () => clearInterval(interval)
+      return () => clearInterval(interval);
     }
-  }, [isStreaming])
+  }, [isStreaming]);
 
   return (
     <motion.div
@@ -47,15 +46,15 @@ const LiveMonitoring = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Camera Feed */}
-        <motion.div 
+        <motion.div
           className="lg:col-span-2 bg-black rounded-xl overflow-hidden shadow-2xl"
           whileHover={{ scale: 1.02 }}
         >
           <div className="relative aspect-video bg-gray-900">
             {isStreaming ? (
               <>
-                <img 
-                  src="https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80" 
+                <img
+                  src="https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80"
                   alt="Camera Feed"
                   className="w-full h-full object-cover opacity-80"
                 />
@@ -74,7 +73,7 @@ const LiveMonitoring = () => {
                       <span>{Math.round(audioLevel)}%</span>
                     </div>
                     <div className="w-full bg-gray-700 rounded-full h-2 mt-1">
-                      <div 
+                      <div
                         className="bg-gradient-to-r from-green-500 to-red-500 h-2 rounded-full transition-all"
                         style={{ width: `${audioLevel}%` }}
                       ></div>
@@ -99,12 +98,12 @@ const LiveMonitoring = () => {
           {/* Camera Controls */}
           <div className="bg-gray-100 p-4 flex justify-between items-center">
             <div className="flex space-x-2">
-              <button 
+              <button
                 onClick={() => setIsStreaming(!isStreaming)}
                 className={`p-3 rounded-full transition ${
-                  isStreaming 
-                    ? 'bg-red-600 text-white hover:bg-red-700' 
-                    : 'bg-green-600 text-white hover:bg-green-700'
+                  isStreaming
+                    ? "bg-red-600 text-white hover:bg-red-700"
+                    : "bg-green-600 text-white hover:bg-green-700"
                 }`}
               >
                 {isStreaming ? <FaStop /> : <FaPlay />}
@@ -123,7 +122,7 @@ const LiveMonitoring = () => {
         </motion.div>
 
         {/* Object Detection Panel */}
-        <motion.div 
+        <motion.div
           className="bg-white rounded-xl shadow-lg p-6"
           whileHover={{ scale: 1.02 }}
         >
@@ -140,7 +139,7 @@ const LiveMonitoring = () => {
                       </span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div 
+                      <div
                         className="bg-blue-600 h-2 rounded-full"
                         style={{ width: `${obj.confidence * 100}%` }}
                       ></div>
@@ -154,19 +153,25 @@ const LiveMonitoring = () => {
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600">People Detected</span>
-                  <span className="text-2xl font-bold">{sensorData.crowd}</span>
+                  <span className="text-2xl font-bold">
+                    {sensorData.personCount}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600">Noise Level</span>
-                  <span className={`text-2xl font-bold ${
-                    sensorData.noise > 50 ? 'text-red-600' : 'text-green-600'
-                  }`}>
-                    {sensorData.noise} dB
+                  <span
+                    className={`text-2xl font-bold ${
+                      sensorData.soundLevel > 50
+                        ? "text-red-600"
+                        : "text-green-600"
+                    }`}
+                  >
+                    {sensorData.soundLevel} dB
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600">Motion Status</span>
-                  {sensorData.crowd > 0 ? (
+                  {sensorData.motion ? (
                     <span className="flex items-center text-yellow-600">
                       <FaExclamationTriangle className="mr-1" /> Active
                     </span>
@@ -175,6 +180,20 @@ const LiveMonitoring = () => {
                       <FaCheckCircle className="mr-1" /> Quiet
                     </span>
                   )}
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600">Camera Status</span>
+                  <span className="text-sm capitalize text-gray-700">
+                    {sensorData.cameraStatus}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600">Data Sync</span>
+                  <span
+                    className={`text-sm ${loading ? "text-yellow-600" : "text-green-600"}`}
+                  >
+                    {loading ? "Syncing..." : "Live"}
+                  </span>
                 </div>
               </div>
             </>
@@ -186,7 +205,7 @@ const LiveMonitoring = () => {
         </motion.div>
       </div>
     </motion.div>
-  )
-}
+  );
+};
 
-export default LiveMonitoring
+export default LiveMonitoring;

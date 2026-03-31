@@ -1,22 +1,36 @@
-import React, { useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
-import { motion } from 'framer-motion'
-import { 
-  FaHospital, 
-  FaBell, 
+import React, { useEffect, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
+import { motion } from "framer-motion";
+import {
+  FaHospital,
+  FaBell,
   FaUserCircle,
   FaMoon,
   FaSun,
-  FaSignOutAlt
-} from 'react-icons/fa'
-import { useApp } from '../../context/AppContext'
+} from "react-icons/fa";
+import { useAlerts } from "../../context/AppContext";
+import { STORAGE_KEYS } from "../../utils/constants";
 
 const Navbar = () => {
-  const { theme, setTheme, alerts } = useApp()
-  const [showNotifications, setShowNotifications] = useState(false)
-  const location = useLocation()
+  const { alerts } = useAlerts();
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [theme, setTheme] = useState(
+    () => localStorage.getItem(STORAGE_KEYS.THEME) || "light",
+  );
+  const location = useLocation();
 
-  const unreadAlerts = alerts.filter(a => !a.read).length
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", theme === "dark");
+  }, [theme]);
+
+  const toggleTheme = () => {
+    const nextTheme = theme === "light" ? "dark" : "light";
+    setTheme(nextTheme);
+    localStorage.setItem(STORAGE_KEYS.THEME, nextTheme);
+    document.documentElement.classList.toggle("dark", nextTheme === "dark");
+  };
+
+  const unreadAlerts = alerts.filter((a) => !a.read).length;
 
   return (
     <nav className="bg-white shadow-lg sticky top-0 z-50">
@@ -32,18 +46,26 @@ const Navbar = () => {
 
           {/* Navigation Links */}
           <div className="hidden md:flex space-x-8">
-            {['Dashboard', 'Live Monitoring', 'Analytics', 'Alerts', 'Documentation'].map((item) => (
+            {[
+              "Dashboard",
+              "Live Monitoring",
+              "Analytics",
+              "Alerts",
+              "Documentation",
+            ].map((item) => (
               <Link
                 key={item}
-                to={`/${item.toLowerCase().replace(' ', '-')}`}
+                to={`/${item.toLowerCase().replace(" ", "-")}`}
                 className={`relative px-3 py-2 text-sm font-medium transition ${
-                  location.pathname === `/${item.toLowerCase().replace(' ', '-')}`
-                    ? 'text-blue-600'
-                    : 'text-gray-700 hover:text-blue-600'
+                  location.pathname ===
+                  `/${item.toLowerCase().replace(" ", "-")}`
+                    ? "text-blue-600"
+                    : "text-gray-700 hover:text-blue-600"
                 }`}
               >
                 {item}
-                {location.pathname === `/${item.toLowerCase().replace(' ', '-')}` && (
+                {location.pathname ===
+                  `/${item.toLowerCase().replace(" ", "-")}` && (
                   <motion.div
                     layoutId="navbar-indicator"
                     className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600"
@@ -59,10 +81,14 @@ const Navbar = () => {
           <div className="flex items-center space-x-4">
             {/* Theme Toggle */}
             <button
-              onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+              onClick={toggleTheme}
               className="p-2 rounded-full hover:bg-gray-100 transition"
             >
-              {theme === 'light' ? <FaMoon className="text-gray-600" /> : <FaSun className="text-yellow-500" />}
+              {theme === "light" ? (
+                <FaMoon className="text-gray-600" />
+              ) : (
+                <FaSun className="text-yellow-500" />
+              )}
             </button>
 
             {/* Notifications */}
@@ -91,7 +117,10 @@ const Navbar = () => {
                   </div>
                   <div className="max-h-96 overflow-y-auto">
                     {alerts.slice(0, 5).map((alert) => (
-                      <div key={alert.id} className="p-3 hover:bg-gray-50 border-b last:border-b-0">
+                      <div
+                        key={alert.id}
+                        className="p-3 hover:bg-gray-50 border-b last:border-b-0"
+                      >
                         <p className="text-sm">{alert.message}</p>
                         <p className="text-xs text-gray-500 mt-1">
                           {new Date(alert.timestamp).toLocaleTimeString()}
@@ -113,7 +142,7 @@ const Navbar = () => {
         </div>
       </div>
     </nav>
-  )
-}
+  );
+};
 
-export default Navbar
+export default Navbar;

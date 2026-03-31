@@ -1,101 +1,124 @@
-import React, { createContext, useState, useContext, useEffect } from 'react'
-import { mockSensorData } from '../services/mockData'
-import toast from 'react-hot-toast'
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { DEFAULT_SENSOR_DATA } from "../utils/constants";
+import { startSensorStream } from "../services/mqttService";
+import {
+  generateThresholdAlerts,
+  pruneExpiredAlerts,
+} from "../utils/alertEngine";
+import {
+  getThresholdSettings,
+  subscribeSettings,
+} from "../services/settingsService";
 
-const AppContext = createContext()
+const AppContext = createContext();
 
-export const useApp = () => {
-  const context = useContext(AppContext)
+const useAppContext = () => {
+  const context = useContext(AppContext);
   if (!context) {
-    throw new Error('useApp must be used within AppProvider')
+    throw new Error("useApp must be used within AppProvider");
   }
-  return context
-}
+  return context;
+};
 
 export const AppProvider = ({ children }) => {
-  const [sensorData, setSensorData] = useState(mockSensorData)
-  const [alerts, setAlerts] = useState([])
-  const [isLoading, setIsLoading] = useState(false)
-  const [theme, setTheme] = useState('light')
-  const [notifications, setNotifications] = useState([])
+  console.log('[AppContext] Initializing AppProvider');
+  const [sensorData, setSensorData] = useState(DEFAULT_SENSOR_DATA);
+  const [alerts, setAlerts] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const thresholdsRef = useRef(getThresholdSettings());
+  console.log('[AppContext] Initial thresholds:', thresholdsRef.current);
 
-  // Simulate real-time data updates
   useEffect(() => {
-    const interval = setInterval(() => {
-      const newData = {
-        ...sensorData,
-        noise: Math.floor(Math.random() * 30) + 30,
-        temperature: Math.floor(Math.random() * 5) + 22,
-        humidity: Math.floor(Math.random() * 20) + 40,
-        crowd: Math.floor(Math.random() * 3),
-        timestamp: new Date().toISOString()
-      }
-      setSensorData(newData)
-      
-      // Check thresholds and create alerts
-      checkThresholds(newData)
-    }, 5000)
+    console.log('[AppContext] Setting up sensor stream and settings subscription');
+    const unsubscribeSettings = subscribeSettings((nextSettings) => {
+      console.log('[AppContext] Settings updated:', nextSettings);
+      thresholdsRef.current = nextSettings.thresholds;
+    });
 
-    return () => clearInterval(interval)
-  }, [sensorData])
+    const stopSensorStream = startSensorStream({
+      onLoading: (isLoading) => {
+        console.log('[AppContext] Loading state:', isLoading);
+        setLoading(isLoading);
+      },
+      onData: (nextData) => {
+        console.log('[AppContext] Sensor data received:', nextData);
+        setSensorData(nextData);
+        setError(null);
+        setAlerts((existingAlerts) => {
+          const newAlerts = generateThresholdAlerts({
+            sensorData: nextData,
+            thresholds: thresholdsRef.current,
+            existingAlerts,
+          });
+          console.log('[AppContext] Alerts updated, count:', newAlerts.length);
+          return newAlerts;
+        });
+      },
+      onError: (nextError) => {
+        if (nextError) {
+          console.error('[AppContext] Stream error:', nextError);
+          setError(nextError.message || "Data stream failed");
+        }
+      },
+    });
 
-  const checkThresholds = (data) => {
-    const newAlerts = []
-    
-    if (data.noise > 50) {
-      newAlerts.push({
-        id: Date.now(),
-        type: 'warning',
-        message: 'High noise level detected!',
-        value: data.noise,
-        threshold: 50,
-        timestamp: new Date().toISOString()
-      })
-      toast.error('High noise level detected!')
-    }
-    
-    if (data.temperature > 28) {
-      newAlerts.push({
-        id: Date.now() + 1,
-        type: 'warning',
-        message: 'Temperature exceeds safe limit!',
-        value: data.temperature,
-        threshold: 28,
-        timestamp: new Date().toISOString()
-      })
-      toast.error('Temperature exceeds safe limit!')
-    }
-    
-    if (data.crowd > 2) {
-      newAlerts.push({
-        id: Date.now() + 2,
-        type: 'info',
-        message: 'Multiple people detected in room',
-        value: data.crowd,
-        threshold: 2,
-        timestamp: new Date().toISOString()
-      })
-      toast('Multiple people detected', { icon: '👥' })
-    }
-    
-    if (newAlerts.length > 0) {
-      setAlerts(prev => [...newAlerts, ...prev].slice(0, 50))
-    }
-  }
+    const cleanupInterval = setInterval(() => {
+      console.log('[AppContext] Running alert cleanup');
+      setAlerts((existingAlerts) => pruneExpiredAlerts(existingAlerts));
+    }, 60_000);
 
-  const value = {
-    sensorData,
-    alerts,
-    isLoading,
-    theme,
-    notifications,
-    setTheme,
-    clearAlerts: () => setAlerts([])
-  }
+    return () => {
+      console.log('[AppContext] Cleaning up AppProvider');
+      clearInterval(cleanupInterval);
+      unsubscribeSettings();
+      stopSensorStream();
+    };
+  }, []);
 
-  return (
-    <AppContext.Provider value={value}>
-      {children}
-    </AppContext.Provider>
-  )
-}
+  const value = useMemo(
+    () => {
+      console.log('[AppContext] Context value updated');
+      return {
+        sensorData,
+        alerts,
+        loading,
+        error,
+        clearAlerts: () => {
+          console.log('[AppContext] Clearing all alerts');
+          setAlerts([]);
+        },
+        markAlertRead: (id) => {
+          console.log('[AppContext] Marking alert as read:', id);
+          setAlerts((existingAlerts) =>
+            existingAlerts.map((alert) =>
+              alert.id === id ? { ...alert, read: true } : alert,
+            ),
+          );
+        },
+      };
+    },
+    [sensorData, alerts, loading, error],
+  );
+
+  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+};
+
+export const useSensorData = () => {
+  const { sensorData, loading, error } = useAppContext();
+  return { sensorData, loading, error };
+};
+
+export const useAlerts = () => {
+  const { alerts, clearAlerts, markAlertRead } = useAppContext();
+  return { alerts, clearAlerts, markAlertRead };
+};
+
+export const useApp = useAppContext;

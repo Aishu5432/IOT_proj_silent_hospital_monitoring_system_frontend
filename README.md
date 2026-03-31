@@ -1,16 +1,72 @@
-# React + Vite
+# SilentCare IoT Smart Hospital Monitoring Dashboard
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Production-ready React + Vite frontend for a Smart Hospital room monitoring system.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- ThingSpeak API integration with normalized sensor model
+- MQTT-ready stream service with automatic polling fallback
+- Global sensor and alert state via AppContext hooks
+- Smart alert engine with severity, deduplication, and expiration
+- Functional settings with localStorage persistence
+- Reusable chart component (line, bar, area)
+- Dashboard freshness indicators and stale data fallback UI
+- Error boundary and consistent loader states
 
-## React Compiler
+## Sensor Data Model
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+All streams are normalized to the following structure:
 
-## Expanding the ESLint configuration
+```json
+{
+  "temperature": 24.1,
+  "humidity": 57,
+  "distance": 142,
+  "soundLevel": 46,
+  "motion": false,
+  "personCount": 1,
+  "cameraStatus": "unknown",
+  "timestamp": "2026-03-30T12:00:00.000Z"
+}
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Environment Variables
+
+Create a local `.env` file (or copy from `.env.example`) and set values:
+
+```bash
+VITE_THINGSPEAK_CHANNEL_ID=
+VITE_THINGSPEAK_READ_KEY=
+VITE_MQTT_BROKER_URL=
+VITE_MQTT_TOPIC=hospital/sensors
+```
+
+## Development
+
+```bash
+npm install
+npm run dev
+```
+
+## Build
+
+```bash
+npm run build
+npm run preview
+```
+
+## Architecture
+
+- `src/services/api.js`: ThingSpeak API, normalization, retries, polling
+- `src/services/mqttService.js`: MQTT stream + polling fallback orchestration
+- `src/services/settingsService.js`: settings persistence and subscriptions
+- `src/context/AppContext.jsx`: global sensor/alert/loading/error state and hooks
+- `src/utils/alertEngine.js`: threshold alert logic, dedupe, expiration
+- `src/utils/helpers.js`: formatting, freshness, grouping helpers
+- `src/components/Dashboard/ChartComponent.jsx`: reusable chart rendering
+
+## Future Integration Notes
+
+- Raspberry Pi OpenCV person detection can feed `personCount`
+- Camera health endpoint can update `cameraStatus`
+- MQTT broker can become the primary stream with zero page-level changes
