@@ -25,6 +25,7 @@ A Flask + SQLite backend for entry-based occupancy estimation using ThingSpeak s
 - CORS enabled
 - Demo mode fallback when ThingSpeak is unavailable
 - Crowd alert logging when estimated occupancy exceeds threshold
+- Phone camera snapshot analysis endpoint for person counting
 
 ## ThingSpeak Field Mapping
 
@@ -95,6 +96,7 @@ python3 app.py
 - GET /api/history?limit=50
 - GET /api/occupancy
 - GET /api/entry-logs?limit=20
+- POST /api/camera/analyze
 - POST /api/reset
 - GET /api/config
 
@@ -138,3 +140,4 @@ Then use backend endpoints from frontend services instead of direct ThingSpeak a
 - No OpenCV dependency in this version.
 - No MQTT dependency in this version.
 - ThingSpeak remains the sensor source.
+- The phone-camera path uses backend snapshot analysis and can be used alongside ThingSpeak polling.

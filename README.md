@@ -6,6 +6,7 @@ Production-ready React + Vite frontend for a Smart Hospital room monitoring syst
 
 - Backend API integration with normalized sensor model
 - Polling stream service for stable local and Raspberry Pi setups
+- Phone camera snapshot analysis for live person counting
 - Global sensor and alert state via AppContext hooks
 - Smart alert engine with severity, deduplication, and expiration
 - Functional settings with localStorage persistence
@@ -57,6 +58,7 @@ npm run preview
 
 - `src/services/api.js`: backend API client, normalization, retries, polling
 - `src/services/mqttService.js`: polling stream orchestration via backend API
+- `src/pages/LiveMonitoring.jsx`: browser camera capture and backend person-count analysis
 - `src/services/settingsService.js`: settings persistence and subscriptions
 - `src/context/AppContext.jsx`: global sensor/alert/loading/error state and hooks
 - `src/utils/alertEngine.js`: threshold alert logic, dedupe, expiration

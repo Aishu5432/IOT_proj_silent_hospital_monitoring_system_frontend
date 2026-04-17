@@ -44,18 +44,24 @@ export const normalizeBackendData = (payload) => {
     return DEFAULT_SENSOR_DATA;
   }
 
+  const personCount =
+    toNumberOrNull(
+      payload.camera_person_count ??
+        payload.current_count ??
+        payload.estimated_occupancy,
+    ) ?? 0;
+
   return mergeSensorData({
     temperature: toNumberOrNull(payload.temperature),
     humidity: toNumberOrNull(payload.humidity),
     distance: toNumberOrNull(payload.distance),
     soundLevel: toNumberOrNull(payload.sound_level),
     motion: toBoolean(payload.motion),
-    personCount:
-      toNumberOrNull(payload.current_count ?? payload.estimated_occupancy) ?? 0,
-    currentCount:
-      toNumberOrNull(payload.current_count ?? payload.estimated_occupancy) ?? 0,
+    personCount,
+    currentCount: personCount,
     estimatedOccupancy: toNumberOrNull(payload.estimated_occupancy) ?? 0,
     lastEvent: payload.last_event || null,
+    cameraPersonCount: toNumberOrNull(payload.camera_person_count) ?? null,
     cameraStatus: "unknown",
     timestamp: payload.timestamp || new Date().toISOString(),
     source: payload.source || "backend",
@@ -81,6 +87,34 @@ const requestBackend = async ({
         "Content-Type": "application/json",
       },
       body: body ? JSON.stringify(body) : undefined,
+    }),
+    API_TIMEOUT_MS,
+    controller,
+  );
+
+  if (!response.ok) {
+    throw new Error(`Backend request failed: ${response.status}`);
+  }
+
+  return response.json();
+};
+
+const requestBackendFormData = async ({
+  path,
+  params = {},
+  signal,
+  method = "POST",
+  formData,
+} = {}) => {
+  const controller = new AbortController();
+  const activeSignal = signal || controller.signal;
+
+  const url = buildBackendUrl(path, params);
+  const response = await withTimeout(
+    fetch(url, {
+      method,
+      signal: activeSignal,
+      body: formData,
     }),
     API_TIMEOUT_MS,
     controller,
@@ -204,6 +238,32 @@ export const fetchBackendConfig = async ({ signal, retries = 2 } = {}) => {
     { retries },
   );
   return data?.data || {};
+};
+
+export const analyzeCameraFrame = async ({
+  frame,
+  signal,
+  retries = 1,
+} = {}) => {
+  const formData = new FormData();
+  formData.append("frame", frame, "camera-frame.jpg");
+
+  const data = await withRetries(
+    () =>
+      requestBackendFormData({ path: "/api/camera/analyze", signal, formData }),
+    { retries, delayMs: 500 },
+  );
+
+  const payload = data?.data || {};
+  return {
+    personCount: toNumberOrNull(payload.person_count) ?? 0,
+    detections: Array.isArray(payload.detections) ? payload.detections : [],
+    timestamp: payload.timestamp || new Date().toISOString(),
+    model: payload.model || "unknown",
+    frameWidth: toNumberOrNull(payload.frame_width) ?? 0,
+    frameHeight: toNumberOrNull(payload.frame_height) ?? 0,
+    source: payload.source || "phone-camera",
+  };
 };
 
 export const createThingSpeakPoller = ({

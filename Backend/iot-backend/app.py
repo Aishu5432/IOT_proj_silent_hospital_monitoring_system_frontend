@@ -23,6 +23,7 @@ from db import (
     insert_occupancy_state,
     insert_sensor_data,
 )
+from camera_service import CameraPersonCounter
 from occupancy_logic import EntryOccupancyEstimator
 from thingspeak_service import ThingSpeakService
 
@@ -69,6 +70,8 @@ class BackendRuntime:
             timeout_seconds=config.THINGSPEAK_TIMEOUT_SECONDS,
             demo_mode_enabled=config.DEMO_MODE_ENABLED,
         )
+        self.camera_counter = CameraPersonCounter()
+        self.latest_camera_observation: dict[str, Any] | None = None
 
         self.worker_stop_event = threading.Event()
         self.worker_thread: threading.Thread | None = None
@@ -132,6 +135,18 @@ class BackendRuntime:
             "event_type": occupancy_update.event_type,
             "source": payload.get("source", "thingspeak"),
         }
+
+    def analyze_camera_frame(
+        self,
+        frame_bytes: bytes,
+        *,
+        source: str = "phone-camera",
+    ) -> dict[str, Any]:
+        """Analyze a camera frame and cache the latest result."""
+        observation = self.camera_counter.count_people(frame_bytes)
+        observation["source"] = source
+        self.latest_camera_observation = observation
+        return observation
 
     def worker_loop(self) -> None:
         """Continuously poll ThingSpeak and persist data."""
@@ -203,11 +218,51 @@ def latest() -> Any:
             if latest_occupancy
             else latest_sensor["estimated_occupancy"]
         ),
+        "camera_person_count": (
+            runtime.latest_camera_observation.get("person_count")
+            if runtime.latest_camera_observation
+            else None
+        ),
+        "camera_timestamp": (
+            runtime.latest_camera_observation.get("timestamp")
+            if runtime.latest_camera_observation
+            else None
+        ),
         "last_event": last_logs[0].get("event_type") if last_logs else None,
         "timestamp": latest_sensor["timestamp"],
         "source": "backend",
     }
     return jsonify({"status": "ok", "data": response})
+
+
+@app.route("/api/camera/analyze", methods=["POST"])
+def camera_analyze() -> Any:
+    """Analyze one camera frame and return a person count."""
+    frame_bytes: bytes | None = None
+
+    if "frame" in request.files:
+        frame_bytes = request.files["frame"].read()
+    elif request.is_json:
+        payload = request.get_json(silent=True) or {}
+        frame_base64 = payload.get("frame_base64")
+        if isinstance(frame_base64, str) and frame_base64:
+            if "," in frame_base64:
+                frame_base64 = frame_base64.split(",", 1)[1]
+            import base64
+
+            frame_bytes = base64.b64decode(frame_base64)
+
+    if not frame_bytes:
+        return jsonify({"status": "error", "message": "No camera frame received."}), 400
+
+    try:
+        observation = runtime.analyze_camera_frame(frame_bytes)
+    except ValueError as exc:
+        return jsonify({"status": "error", "message": str(exc)}), 400
+    except RuntimeError as exc:
+        return jsonify({"status": "error", "message": str(exc)}), 503
+
+    return jsonify({"status": "ok", "data": observation})
 
 
 @app.route("/api/history", methods=["GET"])

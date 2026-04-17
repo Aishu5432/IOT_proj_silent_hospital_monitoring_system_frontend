@@ -7,6 +7,7 @@ export const DEFAULT_SENSOR_DATA = {
   personCount: 0,
   currentCount: 0,
   estimatedOccupancy: 0,
+  cameraPersonCount: null,
   lastEvent: null,
   cameraStatus: "unknown",
   timestamp: null,
